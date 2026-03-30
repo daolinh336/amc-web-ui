@@ -1,0 +1,19 @@
+services:
+  app:
+    build: .
+    ports:
+      - "4545:4545"
+    environment:
+      - MONGO_HOST=mongo
+      - MONGO_PORT=27017
+    depends_on:
+      - mongo
+
+  mongo:
+    image: mongo:4.4
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+
+volumes:
+  mongo_data:

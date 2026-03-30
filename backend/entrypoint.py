@@ -4,7 +4,7 @@ API via a HTTP interface using the Flask webserver. """
 from os import path
 from typing import List
 
-from flask import Flask, jsonify, request, send_file
+from flask import Flask, jsonify, request, send_file, send_from_directory
 from flask_cors import CORS
 
 from tex_generation import parse_question_dict_list
@@ -40,7 +40,7 @@ class InvalidUsage(Exception):
 def serve_index():
     ''' Serve the frontend at the root of the mountpoint. '''
 
-    return app.send_static_file('index.html')
+    return send_from_directory(app.static_folder, 'index.html')
 
 
 def validate_json(dictionary: dict, keys: List[str]):
@@ -80,7 +80,7 @@ def generate_pdf():
     pdf_path = path.join(project_dir, 'DOC-subject.pdf')
 
     # TODO: clean up project directory
-    return send_file(pdf_path, attachment_filename='generated_quiz.pdf')
+    return send_file(pdf_path, as_attachment=True, download_name='generated_quiz.pdf')
 
 
 @app.route("/store_questions", methods=["POST"])
@@ -153,7 +153,7 @@ def grade_test():
     # containing zooms + crops of the graded tests.
     zipfile_path = python_wrapper.grade_uploaded_tests(project_dir)
 
-    return send_file(zipfile_path, attachment_filename='zooms_and_crops.zip')
+    return send_file(zipfile_path, as_attachment=True, download_name='zooms_and_crops.zip')
 
     # TODO: Cleanup temp dir
 
