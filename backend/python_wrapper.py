@@ -45,6 +45,8 @@ def create_project(project_name: str):
     """ Creates a new project in a temporary directory and returns the path to the
     created directory. """
 
+    project_name = project_name.replace(" ", "_")
+
     temp_dir = tempfile.mkdtemp()
 
     # Set up the directory with the AMC project structure
@@ -74,18 +76,22 @@ def prepare_question(project_dir, tex_file_path):
     file containing the quiz to be generated, generates the quiz and extracts layout information
     that can later be used for grading. '''
 
+    data_dir = path.join(project_dir, 'data')
+
     # Run the AMC command line to create the subject, correction, and position files
     run(['auto-multiple-choice', 'prepare', '--mode', 's', '--prefix', project_dir,
+         '--with', 'pdflatex', 
+         '--data', data_dir,
          tex_file_path, '--out-sujet', 'DOC-subject.pdf', '--out-corrige', 'DOC-correction.pdf',
          '--out-calage', 'DOC-calage.xy'])
 
     # Extract the scoring data from the source file
     run(['auto-multiple-choice', 'prepare', '--mode', 'b',
-         '--prefix', project_dir, tex_file_path, '--data', './data/'])
+         '--prefix', project_dir, tex_file_path, '--data', data_dir])
 
     # Add data from each working document to the layout database
     run(['auto-multiple-choice', 'meptex', '--src', path.join(project_dir, 'DOC-calage.xy'),
-         '--data', path.join(project_dir, 'data')])
+         '--data', data_dir])
 
 def delete_project_directory(project_dir: str):
     ''' Deletes the temporary directory for the project '''

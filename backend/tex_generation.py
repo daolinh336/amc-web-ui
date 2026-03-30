@@ -121,7 +121,7 @@ def parse_question_dict(questions: dict, index: int = 1) -> str:
     '''
 
     answers = '\n'.join(map(
-        lambda a: create_answer(a['answerText'], a['isCorrect']), questions['answers']))
+        lambda a: create_answer(a['answerText'], a['correct']), questions['answers']))
 
     return QUESTION_BODY_SPEC.format(
         questions.get('topic') or 'default',
