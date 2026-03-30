@@ -58,5 +58,6 @@ Configuration for this application is handled via environment variables.  The fu
 
 This project includes a Dockerfile that can be used to build the entire application (frontend and backend) as a single Docker container.  If running via Docker, you still need to provide access to a MongoDB instance that the application can use for storing questions and tests.  If you have the database running on the same machine as the application, you should be able to pass `--net host` to the `docker run` command to give it access to the database directly (this doesn't work on MacOS).  If the database is running on a different host or non-default port, you'll need to pass the configuration values as environment variables to the `docker run` command like `-e MONGO_PORT=39393`.
 
-1. `docker build -t quizzing .`
-2. `docker run -it -p 4545:4545 quizzing`
+1. `docker compose run --build .`
+
+After that, the application availible at localhost:4545
