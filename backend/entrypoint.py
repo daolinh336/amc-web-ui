@@ -68,6 +68,7 @@ def generate_pdf():
     store_test(body['name'], body['username'], body['questions'])
 
     project_dir = python_wrapper.create_project(body['name'])
+
     print('Generated temporary project directory: {}'.format(project_dir))
     tex_file_path = path.join(project_dir, 'text.tex')
 
@@ -75,12 +76,20 @@ def generate_pdf():
         quiz_file.write(parse_question_dict_list(body['questions'], copies=body.get('copies')))
         quiz_file.close()
 
-    python_wrapper.prepare_question(project_dir, tex_file_path)
+    generate_key = body.get('generate_key', False)
+    mode = 's,b,k' if generate_key else 's,b'
+    final_pdf_path = python_wrapper.prepare_question(project_dir, tex_file_path, mode=mode)
 
-    pdf_path = path.join(project_dir, 'DOC-subject.pdf')
+    if generate_key:
+        import glob
+        corr_files = glob.glob(path.join(project_dir, "*-corr.pdf"))
+        final_pdf_path = corr_files[0] if corr_files else final_pdf_path
 
-    # TODO: clean up project directory
-    return send_file(pdf_path, as_attachment=True, download_name='generated_quiz.pdf')
+    if not path.exists(final_pdf_path):
+        raise InvalidUsage('Not found', status_code=500)
+
+    download_name = 'quiz_key.pdf' if generate_key else 'generated_quiz.pdf'
+    return send_file(final_pdf_path, as_attachment=True, download_name=download_name)
 
 
 @app.route("/store_questions", methods=["POST"])
@@ -147,7 +156,7 @@ def grade_test():
         quiz_file.close()
 
     # Re-prepare questions and generate layout information
-    python_wrapper.prepare_question(project_dir, tex_file_path)
+    python_wrapper.prepare_question(project_dir, tex_file_path, mode='s,b')
 
     # Grade the tests using the layout information and get the path to the created zipfile
     # containing zooms + crops of the graded tests.

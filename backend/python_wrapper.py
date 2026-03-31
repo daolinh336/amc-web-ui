@@ -21,7 +21,12 @@ def run(args: List[str], shell=False):
     if shell:
         # Shell-escape the string to avoid shell injection vulnerabilities
         args = '/bin/sh -c {}'.format(shlex.quote(' '.join(args)))
-    subprocess.run(args, shell=shell)
+    result = subprocess.run(args, shell=shell, capture_output=True, text=True)
+    if result.returncode != 0:
+        cmd_str = ' '.join(args) if isinstance(args, list) else args
+        print('ERROR: Command failed with exit code {}'.format(result.returncode))
+        print('STDERR:\n{}'.format(result.stderr))
+        raise RuntimeError('Command failed: {}\nSTDERR: {}'.format(cmd_str, result.stderr))
 
 
 def make_project_dir(temp_dir: str, paths: List[str]):
@@ -39,7 +44,6 @@ def create_dummy_student_list(project_dir: str):
             student_list_file.write('Student {}\n'.format(i))
 
     return students_list_path
-
 
 def create_project(project_name: str):
     """ Creates a new project in a temporary directory and returns the path to the
@@ -71,27 +75,59 @@ def create_project(project_name: str):
     return path.join(temp_dir, project_name)
 
 
-def prepare_question(project_dir, tex_file_path):
-    ''' Given a project directory set up with the correct directory structure for AMC and a TeX
-    file containing the quiz to be generated, generates the quiz and extracts layout information
-    that can later be used for grading. '''
+import os
+import shutil
 
-    data_dir = path.join(project_dir, 'data')
+from subprocess import run, PIPE, CalledProcessError
+import os, glob, shutil
 
-    # Run the AMC command line to create the subject, correction, and position files
-    run(['auto-multiple-choice', 'prepare', '--mode', 's', '--prefix', project_dir,
-         '--with', 'pdflatex', 
+
+def prepare_question(project_dir, tex_file_path, mode='s,b'):
+    data_dir = os.path.join(project_dir, 'data')
+    output_sujet = os.path.join(project_dir, 'final_quiz.pdf')
+    
+    os.makedirs(data_dir, exist_ok=True)
+    tex_filename = os.path.basename(tex_file_path)
+
+    # Bước 1: Tạo PDF đề thi + file calage.xy
+    result = run(
+        ['auto-multiple-choice', 'prepare',
+         '--mode', 's',
+         '--with', 'pdflatex',
+         '--filter', 'latex',
          '--data', data_dir,
-         tex_file_path, '--out-sujet', 'DOC-subject.pdf', '--out-corrige', 'DOC-correction.pdf',
-         '--out-calage', 'DOC-calage.xy'])
+         '--n-copies', '1',
+         '--out-sujet', output_sujet,
+         '--out-calage', 'DOC-calage.xy',
+         tex_filename],
+        stdout=PIPE, stderr=PIPE, text=True, cwd=project_dir
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"AMC prepare mode=s thất bại:\n{result.stderr}")
 
-    # Extract the scoring data from the source file
-    run(['auto-multiple-choice', 'prepare', '--mode', 'b',
-         '--prefix', project_dir, tex_file_path, '--data', data_dir])
+    # Bước 2: Ghi scoring/bareme vào DB
+    result = run(
+        ['auto-multiple-choice', 'prepare',
+         '--mode', 'b',
+         '--with', 'pdflatex',
+         '--filter', 'latex',
+         '--data', data_dir,
+         tex_filename],
+        stdout=PIPE, stderr=PIPE, text=True, cwd=project_dir
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"AMC prepare mode=b thất bại:\n{result.stderr}")
 
-    # Add data from each working document to the layout database
-    run(['auto-multiple-choice', 'meptex', '--src', path.join(project_dir, 'DOC-calage.xy'),
-         '--data', data_dir])
+    result = run(
+        ['auto-multiple-choice', 'meptex',
+         '--src', os.path.join(project_dir, 'DOC-calage.xy'),
+         '--data', data_dir],
+        stdout=PIPE, stderr=PIPE, text=True, cwd=project_dir
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"AMC meptex thất bại:\n{result.stderr}")
+
+    return output_sujet
 
 def delete_project_directory(project_dir: str):
     ''' Deletes the temporary directory for the project '''
@@ -118,6 +154,25 @@ def grade_uploaded_tests(project_dir: str) -> str:
     run(['auto-multiple-choice', 'export', '--data', path.join(project_dir, 'data'),
          '--module', 'CSV', '--fich-noms', students_list_path, '-o',
          path.join(project_dir, 'cr', 'GRADES.csv')], shell=True)
+    
+    export_cmd = [
+        'auto-multiple-choice', 'export', 
+        '--data', path.join(project_dir, 'data'),
+        '--module', 'CSV', 
+        '--fich-noms', students_list_path,
+        '-o', path.join(project_dir, 'cr', 'GRADES.csv')
+    ]
+
+    print("--- ĐANG CHẠY EXPORT ---")
+    result = subprocess.run(
+        ' '.join(export_cmd), 
+        shell=True, 
+        capture_output=True, 
+        text=True
+    )
+    print("STDOUT:", result.stdout if result.stdout else "(Trống)")
+    print("STDERR:", result.stderr if result.stderr else "(Trống)")
+    print("Return code:", result.returncode)
 
     # TODO: Look into automatic association
 

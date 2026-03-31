@@ -8,7 +8,7 @@ import { Input } from '../components/InputField';
 import "./CreateTest.css";
 
 const handleSubmit = state => {
-  if(!state.questions) {
+  if (!state.questions) {
     return alert('You must choose at least one question!');
   }
 
@@ -23,7 +23,7 @@ const handleSubmit = state => {
     }
   )
     .then(res => {
-      if(res.status !== 200) {
+      if (res.status !== 200) {
         return res.json().then(({ message }) => { throw message; });
       }
 
