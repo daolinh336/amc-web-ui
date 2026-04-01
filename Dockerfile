@@ -15,7 +15,6 @@ RUN apt-get update && apt-get install -y \
     texlive-latex-extra \
     texlive-lang-other \
     dvipdfmx \
-    texlive-xetex \
     libdbd-sqlite3-perl \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
