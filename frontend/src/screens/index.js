@@ -5,9 +5,11 @@ import { Tabs, Tab } from 'react-bootstrap';
 import AddQuestions from './AddQuestions';
 import CreateTest from './CreateTest';
 import Grade from './Grade';
+import BulkImport from './BulkImport';
 
 const screens = [
   {'title': 'Add Questions', component: AddQuestions},
+  {'title': 'Bulk Import', component: BulkImport},
   {'title': 'Create Test', component: CreateTest},
   {'title': 'Grade Test', component: Grade},
 ];

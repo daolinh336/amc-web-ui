@@ -30,4 +30,4 @@ RUN mkdir -p /app/backend/data && chmod -R 777 /app/backend/data
 RUN mkdir -p /tmp && chmod -R 777 /tmp
 
 
-CMD ["python", "entrypoint.py"]
+CMD ["python", "-u", "entrypoint.py"]

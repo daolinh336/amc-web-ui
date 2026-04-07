@@ -6,6 +6,8 @@ from typing import List
 
 from flask import Flask, jsonify, request, send_file, send_from_directory
 from flask_cors import CORS
+from werkzeug.utils import secure_filename
+import re
 
 from tex_generation import parse_question_dict_list
 import python_wrapper
@@ -167,6 +169,145 @@ def grade_test():
     # TODO: Cleanup temp dir
 
 
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ['txt', 'tex']
+
+def parse_amc_txt(content):
+    questions = []
+    lines = content.split('\n')
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        if line.startswith('*') or line.startswith('**'):
+            is_multiple = line.startswith('**')
+            question_text = line[1:].strip() if not is_multiple else line[2:].strip()
+            answers = []
+            i += 1
+            while i < len(lines) and (lines[i].strip().startswith('+') or lines[i].strip().startswith('-')):
+                ans_line = lines[i].strip()
+                correct = ans_line.startswith('+')
+                answer_text = ans_line[1:].strip()
+                answers.append({'answerText': answer_text, 'correct': correct})
+                i += 1
+            if answers:
+                questions.append({
+                    'questionText': question_text,
+                    'answers': answers,
+                    'type': 'multiple' if is_multiple else 'single'
+                })
+        else:
+            i += 1
+    return questions
+
+def parse_latex(content):
+    questions = []
+    # tìm các block question
+    question_pattern = r'\\begin\{(question(?:mult)?)\}(.*?)\\end\{\1\}'
+    matches = re.finditer(question_pattern, content, re.DOTALL)
+
+    print(content)
+    print(111)
+    
+    for match in matches:
+        is_multiple = 'mult' in match.group(1)
+        block = match.group(2)  # lấy nội dung
+        
+        # tìm từ đầu đến \correctchoice hoặc \wrongchoice
+        text_match = re.search(r'^(.*?)(?:\\correctchoice|\\wrongchoice)', block, re.DOTALL)
+        if text_match:
+            question_text = text_match.group(1).strip()
+        else:
+            continue
+        
+        # answers
+        answers = []
+        correct_matches = re.findall(r'\\correctchoice\{([^}]+)\}', block)
+        wrong_matches = re.findall(r'\\wrongchoice\{([^}]+)\}', block)
+        
+        for ans in correct_matches:
+            answers.append({'answerText': ans.strip(), 'correct': True})
+        for ans in wrong_matches:
+            answers.append({'answerText': ans.strip(), 'correct': False})
+        
+        if answers:
+            questions.append({
+                'questionText': question_text,
+                'answers': answers,
+                'type': 'multiple' if is_multiple else 'single'
+            })
+    
+    return questions
+
+def parse_amc_file(content, filename):
+    if filename.endswith('.txt'):
+        return parse_amc_txt(content), []
+    elif filename.endswith('.tex'):
+        print("ok da vao parse latex")
+        return parse_latex(content), []
+    else:
+        return [], [{'line': 0, 'error': 'Unsupported file type'}]
+
+def validate_questions(questions):
+    valid = []
+    errors = []
+    for idx, q in enumerate(questions):
+        if not q['questionText']:
+            errors.append({'question': idx+1, 'error': 'Empty question text'})
+            continue
+        if len(q['answers']) < 2:
+            errors.append({'question': idx+1, 'error': 'Less than 2 answers'})
+            continue
+        correct_count = sum(1 for a in q['answers'] if a['correct'])
+        if q['type'] == 'single' and correct_count != 1:
+            errors.append({'question': idx+1, 'error': f'Single choice must have exactly 1 correct answer, has {correct_count}'})
+            continue
+        if q['type'] == 'multiple' and correct_count < 1:
+            errors.append({'question': idx+1, 'error': f'Multiple choice must have at least 1 correct answer, has {correct_count}'})
+            continue
+        # Check for empty answers
+        has_empty = any(not a['answerText'] for a in q['answers'])
+        if has_empty:
+            errors.append({'question': idx+1, 'error': 'Empty answer text'})
+            continue
+        valid.append(q)
+    return valid, errors
+
+@app.route('/upload_questions', methods=['POST'])
+def upload_questions():
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'message': 'No file part'})
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'success': False, 'message': 'No selected file'})
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        content = file.read().decode('utf-8')
+        questions, parse_errors = parse_amc_file(content, filename)
+        print(content)
+        valid_questions, validation_errors = validate_questions(questions)
+        all_errors = parse_errors + validation_errors
+        if valid_questions:
+            topic = request.form.get('topic', 'bulk')
+            username = request.form.get('username', 'bulk')
+            inserted_ids = insert_questions(valid_questions, topic=topic, username=username)
+        return jsonify({
+            'success': True,
+            'imported': len(valid_questions),
+            'errors': all_errors,
+            'questions': [
+                    {
+                        'id': inserted_ids[i] if i < len(inserted_ids) else '',
+                        'questionText': q['questionText'][:50] + '...' if len(q['questionText']) > 50 else q['questionText'],
+                        'type': q['type'],
+                        'correct_count': sum(1 for a in q['answers'] if a['correct'])
+                    } 
+                    for i, q in enumerate(valid_questions)
+
+                ]
+        })
+    return jsonify({'success': False, 'message': 'Invalid file type'})
+
+
 @app.errorhandler(InvalidUsage)
 def handle_invalid_usage(error):
     ''' This handler is triggered whenever any of the other API routes raise an `InvalidUsage`
@@ -176,4 +317,4 @@ def handle_invalid_usage(error):
     response.status_code = error.status_code
     return response
 
-app.run(host='0.0.0.0', port=4545)
+app.run(host='0.0.0.0', port=4545, debug=True)

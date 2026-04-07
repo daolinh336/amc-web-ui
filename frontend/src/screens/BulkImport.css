@@ -1,0 +1,20 @@
+/* BulkImport.css */
+.bulk-import {
+  padding: 20px;
+}
+
+.upload-section {
+  margin-bottom: 20px;
+}
+
+.upload-section input, .upload-section button {
+  margin: 5px;
+}
+
+.result {
+  margin-top: 20px;
+}
+
+.result ul {
+  list-style-type: none;
+}

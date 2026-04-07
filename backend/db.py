@@ -26,7 +26,8 @@ def insert_questions(questions: List[dict], **kwargs):
     """ Inserts a list of questions into the database with a given topic. """
 
     questions_with_topics = map(lambda question: {**question, **kwargs}, questions)
-    AMC_DB['questions'].insert_many(questions_with_topics)
+    result = AMC_DB['questions'].insert_many(questions_with_topics)
+    return [str(oid) for oid in result.inserted_ids]  # trả về list string ID
 
 def get_questions_by_topic(topic: str) -> List[dict]:
     """ Pulls all questions out of the dictinary with the supplied topic """

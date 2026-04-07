@@ -32,18 +32,38 @@ def run(args: List[str], shell=False):
 def make_project_dir(temp_dir: str, paths: List[str]):
     os.mkdir(path.join(temp_dir, *paths))
 
-
 def create_dummy_student_list(project_dir: str):
-    ''' Creates a CSV file in the provided project directory containing a dummy list of student
-    names.  AMC's `note` command requires a CSV file like this, so we generate this one if
-    the user doesn't provide a student list of their own. '''
-
     students_list_path = path.join(project_dir, 'cr', 'student_names.csv')
-    with open(students_list_path, mode='w') as student_list_file:
-        for i in range(0, 300):
-            student_list_file.write('Student {}\n'.format(i))
-
+    os.makedirs(path.join(project_dir, 'cr'), exist_ok=True)
+    
+    students = [
+        ('23021610', 'ko phai linh'),
+        ('23021611', 'ko ko'),
+        ('23021612', 'kimi'),
+        ('23021613', 'linh'),
+        ('34132724', 'linhlinh'),
+        ('23021614', 'nham'),
+        ('23021615', 'cua chong'),
+    ]
+    
+    with open(students_list_path, mode='w', encoding='utf-8') as f:
+        f.write('MSSV,Name\n')
+        for mssv, name in students:
+            f.write('{},{}\n'.format(mssv, name))
+    
     return students_list_path
+
+# def create_dummy_student_list(project_dir: str):
+#     ''' Creates a CSV file in the provided project directory containing a dummy list of student
+#     names.  AMC's `note` command requires a CSV file like this, so we generate this one if
+#     the user doesn't provide a student list of their own. '''
+
+#     students_list_path = path.join(project_dir, 'cr', 'student_names.csv')
+#     with open(students_list_path, mode='w') as student_list_file:
+#         for i in range(0, 300):
+#             student_list_file.write('Student {}\n'.format(i))
+
+#     return students_list_path
 
 def create_project(project_name: str):
     """ Creates a new project in a temporary directory and returns the path to the
@@ -139,39 +159,98 @@ def grade_uploaded_tests(project_dir: str) -> str:
     tests in the `scans` subdirectory.  The resulting zooms + crops are zipped up, and the path to
     the created zipfile is returned. '''
 
-    # Analyze tests
-    run(['auto-multiple-choice', 'analyse', '--projet', project_dir,
-         path.join(project_dir, 'scans', '*')], shell=True)
+    # Lấy danh sách file cụ thể
+    scans_dir = os.path.join(project_dir, 'scans')
+    scan_files = glob.glob(os.path.join(scans_dir, '*'))
+    
+    print(f"DEBUG: Tìm thấy {len(scan_files)} file trong thư mục scans")
+    
+    if not scan_files:
+        print("LỖI: Không tìm thấy file nào trong thư mục scans để chấm!")
+        return ""
+    
+    analyze_cmd = [
+        'auto-multiple-choice', 'analyse',
+        '--projet', project_dir,
+        '--prop', '0.15',
+        '--bw-threshold', '0.6',
+        '--debug', '255',
+    ] + scan_files
+    
+
+    print(analyze_cmd)
+
+    print("--- ĐANG QUÉT ẢNH (ANALYSE) ---")
+    result_analyse = subprocess.run(analyze_cmd, capture_output=True, text=True)
+    print("STDERR:", result_analyse.stderr)
+    print("STDOUT:", result_analyse.stdout)
+
+
+    students_list_path = create_dummy_student_list(project_dir)
+    
+    assoc_cmd = [
+        'auto-multiple-choice', 'association-auto',
+        '--data', os.path.join(project_dir, 'data'),
+        '--liste', students_list_path,
+        '--liste-key', 'MSSV',
+        '--notes-id', 'MSSV' 
+    ]
+
+    result_assoc = subprocess.run(assoc_cmd, capture_output=True, text=True)
+
+    print("=== [ASSOC STDOUT] ===")
+    print(result_assoc.stdout)
+    
+    print("=== [ASSOC STDERR] ===")
+    print(result_assoc.stderr)
+        
+    print(f"Assoc Return code: {result_assoc.returncode}")
+
+
 
     # Compute grades
     run(['auto-multiple-choice', 'note', '--data', path.join(project_dir, 'data'),
-         '--seuil', '0.15'], shell=True)
+        '--seuil', '0.15'], shell=True)
 
-    # TODO: Take this as optional input from the user
-    students_list_path = create_dummy_student_list(project_dir)
 
-    # Export grades to CSV
-    run(['auto-multiple-choice', 'export', '--data', path.join(project_dir, 'data'),
-         '--module', 'CSV', '--fich-noms', students_list_path, '-o',
-         path.join(project_dir, 'cr', 'GRADES.csv')], shell=True)
-    
+    print("--- NỘI DUNG CSV ---")
+    with open(students_list_path, 'r', encoding='utf-8') as f:
+        print(repr(f.read()))
+
+    import sqlite3
+    assoc_db = path.join(project_dir, 'data', 'association.sqlite')
+    if os.path.exists(assoc_db):
+        conn = sqlite3.connect(assoc_db)
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT * FROM association_variables")
+            print("VARIABLES:", cur.fetchall())
+            cur.execute("SELECT * FROM association_association")
+            print("ASSOCIATION:", cur.fetchall())
+        except Exception as e:
+            print("DB ERROR:", e)
+        conn.close()
+    else:
+        print("association.sqlite KHÔNG TỒN TẠI!")
+
+    # Export grades to CSV 
     export_cmd = [
-        'auto-multiple-choice', 'export', 
+        'auto-multiple-choice', 'export',
         '--data', path.join(project_dir, 'data'),
-        '--module', 'CSV', 
+        '--module', 'CSV',
         '--fich-noms', students_list_path,
+        '--option-out', 'sep=,',
         '-o', path.join(project_dir, 'cr', 'GRADES.csv')
     ]
 
     print("--- ĐANG CHẠY EXPORT ---")
     result = subprocess.run(
-        ' '.join(export_cmd), 
-        shell=True, 
+        export_cmd, 
         capture_output=True, 
         text=True
     )
-    print("STDOUT:", result.stdout if result.stdout else "(Trống)")
-    print("STDERR:", result.stderr if result.stderr else "(Trống)")
+    print("STDOUT:", result.stdout if result.stdout else "(None)")
+    print("STDERR:", result.stderr if result.stderr else "(None)")
     print("Return code:", result.returncode)
 
     # TODO: Look into automatic association
