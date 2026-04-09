@@ -87,8 +87,6 @@ def generate_pdf():
         corr_files = glob.glob(path.join(project_dir, "*-corr.pdf"))
         final_pdf_path = corr_files[0] if corr_files else final_pdf_path
 
-    if not path.exists(final_pdf_path):
-        raise InvalidUsage('Not found', status_code=500)
 
     download_name = 'quiz_key.pdf' if generate_key else 'generated_quiz.pdf'
     return send_file(final_pdf_path, as_attachment=True, download_name=download_name)
@@ -142,7 +140,9 @@ def grade_test():
     project_dir = python_wrapper.create_project('grading')
     print(project_dir)
     # Save the uploaded file to it
-    file.save(path.join(project_dir, 'scans', 'to_grade.pdf'))
+    file_path = path.join(project_dir, 'scans', 'to_grade.pdf')
+    with open(file_path, 'wb') as f:
+        f.write(file.read())
 
     # Regenerate test from saved JSON
     test_specs = retrieve_tests(body['testName'], body['username'])

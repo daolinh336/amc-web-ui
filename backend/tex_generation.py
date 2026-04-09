@@ -15,11 +15,12 @@ HEADER_1 = r'''
 \usepackage{xcolor}
 \usepackage[box,completemulti]{automultiplechoice}
 
-\AMCboxStyle{shape=square, size=1.5ex, color=black}
+\AMCboxStyle{shape=square, size=2.8ex, color=black}
 
 \begin{document}
 \AMCrandomseed{1237893}
 \setdefaultgroupmode{withoutreplacement}
+\AMCsetFoot{\thepage}
 '''
 
 HEADER_2 = r'''
@@ -27,41 +28,40 @@ HEADER_2 = r'''
 
 %%% beginning of the test sheet header:
 
-\noindent{\bf QCM  \hfill TEST}
+\noindent{\bf QCM \hfill TEST}
 
-\vspace*{.5cm}
-\begin{minipage}{.4\linewidth}
-  \centering\large\bf Test\ Examination on TODAY'S DATE
+\vspace{5mm}
+
+\noindent
+\begin{minipage}{0.45\linewidth}
+  \centering\large\bf Test Examination on TODAY'S DATE
 \end{minipage}
 \hfill
-\namefield{\fbox{
-     \begin{minipage}{.5\linewidth}
+\begin{minipage}{0.5\linewidth}
+  \namefield{\fbox{
+     \begin{minipage}{\linewidth}
         Firstname and lastname:
 
-        \vspace*{.5cm}\dotfill
-        \vspace*{1mm}
-    \end{minipage}
+        \vspace*{0.5cm}\dotfill
+     \end{minipage}
   }}
-
-\vspace{3mm}
-{\small  % ← thu nhỏ font
-\noindent\AMCcodeH{MSSV}{8}
-}
-\begin{minipage}[b]{5.5cm}
-  $\longleftarrow{}$ MSSV
 \end{minipage}
+
+\vspace{8mm}
+
+\noindent {\bf Mã số sinh viên (MSSV):}
+\vspace{3mm}
+
+\AMCcode{mssv}{8}
+\vspace{8mm}
+
+
+% ==========================
+
 
 \begin{center}\em
 Duration : 10 minutes.
-
-  No notes allowed. The use of electronic calculators is forbidden.
-
-  Questions using the sign \multiSymbole{} may have
-  zero, one or several correct answers.  Other questions have a single correct answer.
 \end{center}
-\vspace{1ex}
-
-%%% end of the header
 '''
 
 

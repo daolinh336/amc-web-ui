@@ -4,6 +4,7 @@ from functools import partial
 import subprocess
 import tempfile
 import os
+import sqlite3
 from os import path
 import shlex
 from shutil import make_archive, rmtree
@@ -44,26 +45,15 @@ def create_dummy_student_list(project_dir: str):
         ('34132724', 'linhlinh'),
         ('23021614', 'nham'),
         ('23021615', 'cua chong'),
+        ('00000000', '?????????'),
     ]
     
     with open(students_list_path, mode='w', encoding='utf-8') as f:
-        f.write('MSSV,Name\n')
+        f.write('mssv,name\n')
         for mssv, name in students:
             f.write('{},{}\n'.format(mssv, name))
     
     return students_list_path
-
-# def create_dummy_student_list(project_dir: str):
-#     ''' Creates a CSV file in the provided project directory containing a dummy list of student
-#     names.  AMC's `note` command requires a CSV file like this, so we generate this one if
-#     the user doesn't provide a student list of their own. '''
-
-#     students_list_path = path.join(project_dir, 'cr', 'student_names.csv')
-#     with open(students_list_path, mode='w') as student_list_file:
-#         for i in range(0, 300):
-#             student_list_file.write('Student {}\n'.format(i))
-
-#     return students_list_path
 
 def create_project(project_name: str):
     """ Creates a new project in a temporary directory and returns the path to the
@@ -112,31 +102,17 @@ def prepare_question(project_dir, tex_file_path, mode='s,b'):
     # Bước 1: Tạo PDF đề thi + file calage.xy
     result = run(
         ['auto-multiple-choice', 'prepare',
-         '--mode', 's',
+         '--mode', mode,
          '--with', 'pdflatex',
          '--filter', 'latex',
          '--data', data_dir,
-         '--n-copies', '1',
          '--out-sujet', output_sujet,
          '--out-calage', 'DOC-calage.xy',
          tex_filename],
         stdout=PIPE, stderr=PIPE, text=True, cwd=project_dir
     )
     if result.returncode != 0:
-        raise RuntimeError(f"AMC prepare mode=s thất bại:\n{result.stderr}")
-
-    # Bước 2: Ghi scoring/bareme vào DB
-    result = run(
-        ['auto-multiple-choice', 'prepare',
-         '--mode', 'b',
-         '--with', 'pdflatex',
-         '--filter', 'latex',
-         '--data', data_dir,
-         tex_filename],
-        stdout=PIPE, stderr=PIPE, text=True, cwd=project_dir
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"AMC prepare mode=b thất bại:\n{result.stderr}")
+        raise RuntimeError(f"AMC prepare mode={mode} thất bại:\n{result.stderr}")
 
     result = run(
         ['auto-multiple-choice', 'meptex',
@@ -148,6 +124,7 @@ def prepare_question(project_dir, tex_file_path, mode='s,b'):
         raise RuntimeError(f"AMC meptex thất bại:\n{result.stderr}")
 
     return output_sujet
+
 
 def delete_project_directory(project_dir: str):
     ''' Deletes the temporary directory for the project '''
@@ -169,12 +146,34 @@ def grade_uploaded_tests(project_dir: str) -> str:
         print("LỖI: Không tìm thấy file nào trong thư mục scans để chấm!")
         return ""
     
+
+    scan_pdf = os.path.join(scans_dir, "to_grade.pdf")
+    output_prefix = os.path.join(scans_dir, "page")
+
+    # Lệnh này sẽ tạo ra page-1.png, page-2.png...
+    subprocess.run(['pdftocairo', '-png', '-r', '300', scan_pdf, output_prefix], check=True)
+
+    # 2. Lấy danh sách các file PNG vừa tạo
+    
+    scan_files = [os.path.join(scans_dir, f) 
+              for f in os.listdir(scans_dir) 
+              if f.endswith('.png')]
+    
+    print(f"DEBUG: Tìm thấy {len(scan_files)} trang ảnh chuẩn bị chấm.")
+
+    print(project_dir)
+    print(project_dir)
+    print(project_dir)
+    print(project_dir)
+    print(project_dir)
     analyze_cmd = [
         'auto-multiple-choice', 'analyse',
         '--projet', project_dir,
         '--prop', '0.15',
         '--bw-threshold', '0.6',
-        '--debug', '255',
+        '--ignore-redone',   
+        '--force-update',    
+        '--debug', '255',    # Giữ lại để mình còn soi được 83 cái ảnh kia
     ] + scan_files
     
 
@@ -186,14 +185,28 @@ def grade_uploaded_tests(project_dir: str) -> str:
     print("STDOUT:", result_analyse.stdout)
 
 
+
+    # Compute grades
+    result = subprocess.run(
+        ['auto-multiple-choice', 'note', '--data', os.path.join(project_dir, 'data'), '--seuil', '0.15'],
+        check=True
+    )
+    
+    print("--- NOTE STDOUT ---")
+    print(result.stdout)
+    print("--- NOTE STDERR ---")
+    print(result.stderr)
+
+
     students_list_path = create_dummy_student_list(project_dir)
     
     assoc_cmd = [
         'auto-multiple-choice', 'association-auto',
         '--data', os.path.join(project_dir, 'data'),
         '--liste', students_list_path,
-        '--liste-key', 'MSSV',
-        '--notes-id', 'MSSV' 
+        '--liste-key', 'mssv',
+        '--notes-id', 'mssv',
+        '--debug'
     ]
 
     result_assoc = subprocess.run(assoc_cmd, capture_output=True, text=True)
@@ -207,17 +220,10 @@ def grade_uploaded_tests(project_dir: str) -> str:
     print(f"Assoc Return code: {result_assoc.returncode}")
 
 
-
-    # Compute grades
-    run(['auto-multiple-choice', 'note', '--data', path.join(project_dir, 'data'),
-        '--seuil', '0.15'], shell=True)
-
-
     print("--- NỘI DUNG CSV ---")
     with open(students_list_path, 'r', encoding='utf-8') as f:
         print(repr(f.read()))
 
-    import sqlite3
     assoc_db = path.join(project_dir, 'data', 'association.sqlite')
     if os.path.exists(assoc_db):
         conn = sqlite3.connect(assoc_db)
@@ -232,6 +238,19 @@ def grade_uploaded_tests(project_dir: str) -> str:
         conn.close()
     else:
         print("association.sqlite KHÔNG TỒN TẠI!")
+
+
+
+    annotate_cmd = [
+    'auto-multiple-choice', 'annotate',
+    '--project', project_dir,
+    '--data', os.path.join(project_dir, 'data'),
+    '--subject', os.path.join(project_dir, 'DOC-sujet.pdf'),
+    '--names-file', students_list_path,
+    '--association-key', 'mssv',
+    '--verdict', 'Mark: %S/%M',
+    ]
+    subprocess.run(annotate_cmd)
 
     # Export grades to CSV 
     export_cmd = [
