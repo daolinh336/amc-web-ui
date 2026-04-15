@@ -26,6 +26,8 @@ HEADER_1 = r'''
 HEADER_2 = r'''
 \onecopy{COPIES}{
 
+\setcounter{AMCquestionaff}{0}
+
 %%% beginning of the test sheet header:
 
 \noindent{\bf QCM \hfill TEST}
@@ -83,7 +85,7 @@ def parse_question_dict(questions: dict, index: int = 1) -> str:
 
     question_spec = rf'''
 \element{{{clean_topic}}}{{
-\begin{{{question_type}}}{{q{index}}}
+\begin{{{question_type}}}{{q\theAMCquestionaff}}
 {questions['questionText']}
 \begin{{choices}}
 {answers}

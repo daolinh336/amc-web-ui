@@ -23,11 +23,47 @@ MONGO_CLIENT = MongoClient(MONGO_URL)
 AMC_DB = MONGO_CLIENT["amc"]
 
 def insert_questions(questions: List[dict], **kwargs):
-    """ Inserts a list of questions into the database with a given topic. """
+    """ Inserts a list of questions into the database with a given topic. 
+    Returns a tuple of (inserted_ids, duplicate_indices) """
 
-    questions_with_topics = map(lambda question: {**question, **kwargs}, questions)
-    result = AMC_DB['questions'].insert_many(questions_with_topics)
-    return [str(oid) for oid in result.inserted_ids]  # trả về list string ID
+    username = kwargs.get('username')
+    duplicate_indices = []
+    questions_to_insert = []
+    
+    for idx, question in enumerate(questions):
+        # Check if question with same (username, questionText) already exists
+        existing = AMC_DB['questions'].find_one({
+            'username': username,
+            'questionText': question.get('questionText')
+        })
+        
+        if existing:
+            duplicate_indices.append(idx)
+        else:
+            questions_to_insert.append({**question, **kwargs})
+    
+    if questions_to_insert:
+        result = AMC_DB['questions'].insert_many(questions_to_insert)
+        inserted_ids = [str(oid) for oid in result.inserted_ids]
+    else:
+        inserted_ids = []
+    
+    return inserted_ids, duplicate_indices
+
+def check_duplicate_questions(username: str, question_texts: List[str]) -> List[int]:
+    """ Checks which questions (by questionText) already exist for the given username.
+    Returns a list of indices in question_texts that are duplicates. """
+    
+    duplicate_indices = []
+    for idx, question_text in enumerate(question_texts):
+        existing = AMC_DB['questions'].find_one({
+            'username': username,
+            'questionText': question_text
+        })
+        if existing:
+            duplicate_indices.append(idx)
+    
+    return duplicate_indices
 
 def get_questions_by_topic(topic: str) -> List[dict]:
     """ Pulls all questions out of the dictinary with the supplied topic """
@@ -64,9 +100,18 @@ def query_questions(topic: Optional[str], username: Optional[str],
 
     query = {
         'topic': topic,
-        'username': username,
         'questionText': {'$regex': '.*{}.*'.format(question_text)} if question_text else None,
     }
+
+    # If username is provided, include both public questions and private questions owned by this user
+    # If username is not provided, only include public questions
+    if username:
+        query['$or'] = [
+            {'isPublic': True},
+            {'isPublic': False, 'username': username}
+        ]
+    else:
+        query['isPublic'] = True
 
     db_res = list(AMC_DB['questions'].find(remove_falsey_keys(query), limit=limit))
     return remove_oids(db_res)

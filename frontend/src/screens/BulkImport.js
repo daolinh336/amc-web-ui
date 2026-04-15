@@ -5,6 +5,7 @@ const BulkImport = () => {
   const [file, setFile] = useState(null);
   const [topic, setTopic] = useState('');
   const [username, setUsername] = useState('');
+  const [isPublic, setIsPublic] = useState(true);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -17,11 +18,16 @@ const BulkImport = () => {
       alert('Please select a file');
       return;
     }
+    if (!username || username.trim() === '') {
+      alert('Username is required');
+      return;
+    }
     setLoading(true);
     const formData = new FormData();
     formData.append('file', file);
     formData.append('topic', topic || 'bulk');
-    formData.append('username', username || 'bulk');
+    formData.append('username', username);
+    formData.append('isPublic', isPublic);
 
     try {
       const response = await fetch('/upload_questions', {
@@ -50,10 +56,33 @@ const BulkImport = () => {
         />
         <input
           type="text"
-          placeholder="Username (optional)"
+          placeholder="Username (required)"
+          required
           value={username}
           onChange={(e) => setUsername(e.target.value)}
         />
+        <div style={{ marginTop: '10px', marginBottom: '10px' }}>
+          <label style={{ marginRight: '20px' }}>
+            <input
+              type="radio"
+              name="visibility"
+              value="public"
+              checked={isPublic === true}
+              onChange={() => setIsPublic(true)}
+            />
+            {' '}Public
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="visibility"
+              value="private"
+              checked={isPublic === false}
+              onChange={() => setIsPublic(false)}
+            />
+            {' '}Private
+          </label>
+        </div>
         <button onClick={handleUpload} disabled={loading}>
           {loading ? 'Uploading...' : 'Import'}
         </button>
@@ -62,7 +91,12 @@ const BulkImport = () => {
         <div className="result">
           {result.success ? (
             <div>
-              <p>Imported {result.imported} questions successfully.</p>
+              <p>✓ Imported {result.imported} questions successfully.</p>
+              {result.duplicates && result.duplicates.length > 0 && (
+                <p style={{color: '#ff9800', fontWeight: 'bold'}}>
+                  ⚠️ {result.duplicates.length} duplicate question(s) were skipped (Questions {result.duplicates.map(i => i + 1).join(', ')})
+                </p>
+              )}
                 <table border="1" cellPadding="8" cellSpacing="0" style={{width: '100%', borderCollapse: 'collapse', marginTop: '10px'}}>
                     <thead style={{background: '#e8eaf6'}}>
                         <tr>

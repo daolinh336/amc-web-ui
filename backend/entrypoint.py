@@ -11,7 +11,7 @@ import re
 
 from tex_generation import parse_question_dict_list
 import python_wrapper
-from db import insert_questions, query_questions, store_test, retrieve_tests
+from db import insert_questions, query_questions, store_test, retrieve_tests, check_duplicate_questions
 
 app = Flask(__name__, static_url_path='')
 CORS(app)
@@ -92,6 +92,20 @@ def generate_pdf():
     return send_file(final_pdf_path, as_attachment=True, download_name=download_name)
 
 
+@app.route("/check_duplicates", methods=["POST"])
+def check_duplicates():
+    ''' Checks which questions are duplicates (same username and questionText) '''
+    
+    body = request.json
+    validate_json(body, ['username', 'questions'])
+    
+    duplicate_indices = check_duplicate_questions(body['username'], body['questions'])
+    
+    return jsonify({
+        "duplicates": duplicate_indices
+    })
+
+
 @app.route("/store_questions", methods=["POST"])
 def store_questions():
     ''' Given a dictionary containing a username, topic, and list of questions to be stored, stores
@@ -100,11 +114,12 @@ def store_questions():
     body = request.json
     validate_json(body, ['topic', 'username', 'questions'])
 
-    insert_questions(body['questions'], topic=body['topic'], username=body['username'])
+    inserted_ids, duplicate_indices = insert_questions(body['questions'], topic=body['topic'], username=body['username'])
 
     return jsonify({
         "success": True,
-        "message": "Questions successfully stored."
+        "message": "Questions successfully stored.",
+        "duplicates": duplicate_indices
     })
 
 
@@ -289,21 +304,29 @@ def upload_questions():
         if valid_questions:
             topic = request.form.get('topic', 'bulk')
             username = request.form.get('username', 'bulk')
-            inserted_ids = insert_questions(valid_questions, topic=topic, username=username)
-        return jsonify({
-            'success': True,
-            'imported': len(valid_questions),
-            'errors': all_errors,
-            'questions': [
-                    {
-                        'id': inserted_ids[i] if i < len(inserted_ids) else '',
+            isPublic = request.form.get('isPublic', 'true').lower() == 'true'
+            # Add isPublic field to each question
+            for question in valid_questions:
+                question['isPublic'] = isPublic
+            inserted_ids, duplicate_indices = insert_questions(valid_questions, topic=topic, username=username)
+            
+            # Build response with info about imported vs duplicates
+            imported_questions = []
+            for i, q in enumerate(valid_questions):
+                if i not in duplicate_indices:
+                    imported_questions.append({
+                        'id': inserted_ids[len(imported_questions)] if len(imported_questions) < len(inserted_ids) else '',
                         'questionText': q['questionText'][:50] + '...' if len(q['questionText']) > 50 else q['questionText'],
                         'type': q['type'],
                         'correct_count': sum(1 for a in q['answers'] if a['correct'])
-                    } 
-                    for i, q in enumerate(valid_questions)
-
-                ]
+                    })
+        
+        return jsonify({
+            'success': True,
+            'imported': len(valid_questions) - len(duplicate_indices) if valid_questions else 0,
+            'duplicates': duplicate_indices if valid_questions else [],
+            'errors': all_errors,
+            'questions': imported_questions if valid_questions else []
         })
     return jsonify({'success': False, 'message': 'Invalid file type'})
 

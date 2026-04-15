@@ -17,7 +17,8 @@ const getEmptyQuestion = () => ({
     {answerText: '', correct: false}
   ],
   // Does question contain text?
-  questionValid: false
+  questionValid: false,
+  isPublic: true
 });
 
 const Answers = ({ answers, setAnswers, removeAnswer }) => (
@@ -69,6 +70,11 @@ const answerHasText = (answer) => {
 };
 
 const handleSubmit = state => {
+  // Validate username is provided
+  if (!state.username || state.username.trim() === '') {
+    return alert("Username is required");
+  }
+
   // An array of boolean values stating whether or not each answer has text
   const answersValid = state.questions.reduce(
     (acc, { questionValid, answers }) => acc && questionValid && !answers.find(answer => !answerHasText(answer)),
@@ -79,18 +85,56 @@ const handleSubmit = state => {
     return alert("All fields are required");
   }
 
+  // Check for duplicates before submission
   fetch(
-    './store_questions',
+    './check_duplicates',
     {
       method: 'POST',
-      body: JSON.stringify(state),
+      body: JSON.stringify({
+        username: state.username,
+        questions: state.questions.map(q => q.questionText)
+      }),
       headers: {
         'Content-Type': 'application/json'
       },
     }
   )
-    .then(res => res.text())
-    .then(res => alert(res));
+    .then(res => res.json())
+    .then(duplicateInfo => {
+      // Get indices of duplicate questions
+      const duplicateIndices = duplicateInfo.duplicates || [];
+      
+      // Proceed with submission anyway
+      fetch(
+        './store_questions',
+        {
+          method: 'POST',
+          body: JSON.stringify(state),
+          headers: {
+            'Content-Type': 'application/json'
+          },
+        }
+      )
+        .then(res => res.json())
+        .then(res => {
+          let message = res.message + '\n\n';
+          
+          if (duplicateIndices.length > 0) {
+            const duplicateNumbers = duplicateIndices.map(i => i + 1).join(', ');
+            message += `Questions ${duplicateNumbers} were duplicates and skipped.\n`;
+            const importedCount = state.questions.length - duplicateIndices.length;
+            message += `${importedCount} new questions were imported.`;
+          } else {
+            message += `All ${state.questions.length} questions were imported successfully.`;
+          }
+          
+          alert(message);
+        });
+    })
+    .catch(err => {
+      console.error('Error checking duplicates:', err);
+      alert("Error checking duplicates");
+    });
 };
 
 const Question = ({ state, setState }) => (
@@ -104,6 +148,33 @@ const Question = ({ state, setState }) => (
       onChange={e => setState({ ...state, questionText: e.target.value, questionValid: true })}
     />
 
+    <div style={{ width: 500, marginLeft: 20, paddingTop: 15 }}>
+      <InputField label='Visibility:'>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <input
+            type="radio"
+            name="visibility"
+            value="public"
+            checked={state.isPublic === true}
+            onChange={() => setState({ ...state, isPublic: true })}
+            style={{ marginRight: '5px' }}
+          />
+          Public
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '8px' }}>
+          <input
+            type="radio"
+            name="visibility"
+            value="private"
+            checked={state.isPublic === false}
+            onChange={() => setState({ ...state, isPublic: false })}
+            style={{ marginRight: '5px' }}
+          />
+          Private (xem dc khi nhap dung username)
+        </label>
+      </InputField>
+    </div>
+
     <div style={{ width: 500, marginLeft: 20, paddingTop: 25 }}>
       <Answers
         answers={state.answers}
@@ -116,11 +187,13 @@ const Question = ({ state, setState }) => (
 const FormControls = ({ state, setState }) => (
   <div>
     <div style={{ paddingBottom: 25 }}>
-      <InputField label='Username (optional):'>
+      <InputField label='Username (required):'>
         <input class='infoInput' id='username'
           type='text'
+          required
           value={state.username || ''}
           onChange={e => setState({ ...state, username: e.target.value })}
+          placeholder="Enter your username"
         />
       </InputField>
 
@@ -129,16 +202,6 @@ const FormControls = ({ state, setState }) => (
           type='text'
           value={state.topic || ''}
           onChange={e => setState({ ...state, topic: e.target.value })}
-        />
-      </InputField>
-
-      <InputField label='Share question publically?:'>
-        <input class='infoInput'
-          id="checkBox"
-          type="checkbox"
-          style={{ width: 20, marginRight: 5 }}
-          checked={state.shared}
-          onChange={() => setState({ ...state, shared: !state.shared })}
         />
       </InputField>
     </div>
@@ -197,7 +260,6 @@ const Form = ({ state, setState }) => (
 
 const initialState = {
   username: null,
-  shared: true,
   questions: [getEmptyQuestion()],
 };
 
